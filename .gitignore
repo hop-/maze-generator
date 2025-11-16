@@ -1,0 +1,42 @@
+# Zig build artifacts
+zig-cache/
+.zig-cache/
+zig-out/
+
+# Build directories
+build/
+target/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Output files
+maze.txt
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# Compiled binaries
+*.exe
+*.out
+*.app
+
+# Log files
+*.log
+
+# Coverage reports
+*.gcov
+*.lcov
+
+# Debug info
+*.dSYM/
+*.pdb
