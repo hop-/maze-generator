@@ -11,10 +11,5 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) void {
     maze.start = .{ .x = startX, .y = startY };
 
     // TODO: Implement Growing Tree algorithm
-    for (0..maze.height) |y| {
-        for (0..maze.width) |x| {
-            const isWall = (y + x + seed - hardness) % 2 == 0;
-            maze.grid[y][x] = isWall;
-        }
-    }
+    _ = hardness; // Placeholder to avoid unused variable warning
 }
