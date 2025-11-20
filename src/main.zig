@@ -25,6 +25,7 @@ pub fn main() !void {
     var height: isize = 20;
     var hardness: u8 = 100;
     var seed: u64 = 0;
+    var file_path: []const u8 = "maze.txt";
 
     // Parse command line arguments
     var process_args = try getProcessArgs(allocator);
@@ -35,10 +36,11 @@ pub fn main() !void {
         try stdout.print("Usage: maze-generator [option [value]]\n", .{});
         try stdout.print("Options:\n", .{});
         try stdout.print("  --help, -h          Show this help message\n", .{});
-        try stdout.print("  --width <value>     Set the width of the maze (default: {d})\n", .{width});
-        try stdout.print("  --height <value>    Set the height of the maze (default: {d})\n", .{height});
-        try stdout.print("  --seed <value>      Set the random seed (default: random)\n", .{});
-        try stdout.print("  --hardness <value>  Set the hardness level (min: 0, max: 255, default: {d})\n", .{hardness});
+        try stdout.print("  --width, -w <value>     Set the width of the maze (default: {d})\n", .{width});
+        try stdout.print("  --height, -h <value>    Set the height of the maze (default: {d})\n", .{height});
+        try stdout.print("  --seed, -s <value>      Set the random seed (default: random)\n", .{});
+        try stdout.print("  --level, -l, --hardness <level>  Set the hardness level (min: 0, max: 255, default: {d})\n", .{hardness});
+        try stdout.print("  --output, -o <path>     Set the output file path (default: {s})\n", .{file_path});
         try stdout.flush();
         return;
     }
@@ -46,6 +48,7 @@ pub fn main() !void {
     width = opts.width orelse width;
     height = opts.height orelse height;
     hardness = opts.hardness orelse hardness;
+    file_path = opts.output orelse file_path;
 
     if (opts.seed) |s| {
         seed = s;
@@ -68,7 +71,6 @@ pub fn main() !void {
     try stdout.flush();
 
     // Write maze to file
-    const file_path = "maze.txt";
     try Writer.writeToFile(&maze, file_path);
 
     try stdout.print("Maze written to {s}\n", .{file_path});
