@@ -17,9 +17,6 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    try stdout.print("Maze Generator\n", .{});
-    try stdout.flush();
-
     // Default parameters
     var width: isize = 20;
     var height: isize = 20;
@@ -33,11 +30,11 @@ pub fn main() !void {
     const opts = try Options.parse(process_args.items);
 
     if (opts.help) {
-        try stdout.print("Usage: maze-generator [option [value]]\n", .{});
+        try stdout.print("Usage: maze_generator [option [value]]\n", .{});
         try stdout.print("Options:\n", .{});
         try stdout.print("  --help, -h          Show this help message\n", .{});
-        try stdout.print("  --width, -w <value>     Set the width of the maze (default: {d})\n", .{width});
-        try stdout.print("  --height, -h <value>    Set the height of the maze (default: {d})\n", .{height});
+        try stdout.print("  --width, -W <value>     Set the width of the maze (default: {d})\n", .{width});
+        try stdout.print("  --height, -H <value>    Set the height of the maze (default: {d})\n", .{height});
         try stdout.print("  --seed, -s <value>      Set the random seed (default: random)\n", .{});
         try stdout.print("  --level, -l, --hardness <level>  Set the hardness level (min: 0, max: 255, default: {d})\n", .{hardness});
         try stdout.print("  --output, -o <path>     Set the output file path (default: {s})\n", .{file_path});
@@ -57,7 +54,8 @@ pub fn main() !void {
         seed = rng.random().int(u64);
     }
 
-    try stdout.print("Generating maze of size {d}x{d}\n", .{ width, height });
+    try stdout.print("Generating maze: {d}x{d}\n", .{ width, height });
+    try stdout.print("Using hardness level: {d}\n", .{hardness});
     try stdout.print("Using seed: {d}\n", .{seed});
     try stdout.flush();
 
@@ -66,13 +64,19 @@ pub fn main() !void {
     defer maze.deinit();
 
     // Generate walls
+    const start_time = std.time.milliTimestamp();
     try generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = .growing_tree });
-    try stdout.print("Maze generation complete.\n", .{});
+    const end_time = std.time.milliTimestamp();
+    const duration = end_time - start_time;
+    try stdout.print("Generation complete in: {d}ms\n", .{duration});
+    try stdout.flush();
+
+    try stdout.print("Writing to file: {s}\n", .{file_path});
     try stdout.flush();
 
     // Write maze to file
     try Writer.writeToFile(&maze, file_path);
 
-    try stdout.print("Maze written to {s}\n", .{file_path});
+    try stdout.print("Done\n", .{});
     try stdout.flush();
 }

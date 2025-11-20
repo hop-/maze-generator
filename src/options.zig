@@ -23,11 +23,11 @@ pub const Options = struct {
             const arg = process_args[idx];
             if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
                 options.help = true;
-            } else if (std.mem.startsWith(u8, arg, "--width") or std.mem.eql(u8, arg, "-w")) {
+            } else if (std.mem.startsWith(u8, arg, "--width") or std.mem.eql(u8, arg, "-W")) {
                 idx += 1;
                 const value = process_args[idx];
                 options.width = try std.fmt.parseInt(isize, value, 10);
-            } else if (std.mem.startsWith(u8, arg, "--height") or std.mem.eql(u8, arg, "-h")) {
+            } else if (std.mem.startsWith(u8, arg, "--height") or std.mem.eql(u8, arg, "-H")) {
                 idx += 1;
                 const value = process_args[idx];
                 options.height = try std.fmt.parseInt(isize, value, 10);
