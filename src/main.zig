@@ -1,7 +1,7 @@
 const std = @import("std");
-const Maze = @import("maze.zig").Maze;
 const generator = @import("generator/generator.zig");
 const Writer = @import("writer.zig").Writer;
+const Maze = @import("core/maze.zig").Maze;
 
 pub fn main() !void {
     // Init stdout
@@ -17,10 +17,10 @@ pub fn main() !void {
     try stdout.print("Maze Generator\n", .{});
     try stdout.flush();
 
-    const width: usize = 80;
-    const height: usize = 80;
+    const width = 80;
+    const height = 80;
     const seed = 42;
-    const hardness: u8 = 5;
+    const hardness = 5;
 
     try stdout.print("Generating maze of size {d}x{d}\n", .{ width, height });
     try stdout.print("Using seed: {d}\n", .{seed});
@@ -31,7 +31,7 @@ pub fn main() !void {
     defer maze.deinit();
 
     // Generate walls
-    generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = .growing_tree });
+    try generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = .growing_tree });
     try stdout.print("Maze generation complete.\n", .{});
     try stdout.flush();
 
