@@ -8,6 +8,11 @@ const ALL_DIRECTIONS = @import("../core/direction.zig").ALL_DIRECTIONS;
 const max_hardness: u8 = std.math.maxInt(u8);
 const min_hardness: u8 = 0;
 
+const BranchHead = struct {
+    coords: Coordinates,
+    length: usize,
+};
+
 pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
     // Initialize RNG
     var rng = utils.initRng(seed);
@@ -25,7 +30,7 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
     }
 
     // Initialize branch heads list
-    var branch_heads = std.ArrayList(Coordinates).empty;
+    var branch_heads = std.ArrayList(BranchHead).empty;
     defer branch_heads.deinit(allocator);
 
     // Define the start
@@ -37,7 +42,12 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
     const start_x: usize = @intCast(start.x);
     const start_y: usize = @intCast(start.y);
     visiteds[start_y][start_x] = true;
-    try branch_heads.append(allocator, start);
+
+    var furthermost_branch_head = BranchHead{
+        .coords = start,
+        .length = 0,
+    };
+    try branch_heads.append(allocator, furthermost_branch_head);
 
     while (branch_heads.items.len > 0) {
         // Select a branch head
@@ -47,9 +57,8 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
         // Find unvisited neighbors
         var neighbor_directions = std.ArrayList(Direction).empty;
         defer neighbor_directions.deinit(allocator);
-
         for (ALL_DIRECTIONS) |dir| {
-            const neighbor_coords = current.move(dir, 1);
+            const neighbor_coords = current.coords.move(dir, 1);
             if (neighbor_coords.x < 0 or neighbor_coords.x >= maze.width or
                 neighbor_coords.y < 0 or neighbor_coords.y >= maze.height)
             {
@@ -61,7 +70,6 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
                 try neighbor_directions.append(allocator, dir);
             }
         }
-
         if (neighbor_directions.items.len == 0) {
             // No unvisited neighbors, remove branch head
             _ = branch_heads.swapRemove(index);
@@ -71,15 +79,27 @@ pub fn generate(maze: *Maze, seed: u64, hardness: u8) !void {
         // Choose a random neighbor direction
         const dir_index = rng.random().intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
         const chosen_direction = neighbor_directions.items[dir_index];
-        const neighbor_coords = try maze.openPath(current, chosen_direction);
+        const neighbor_coords = try maze.openPath(current.coords, chosen_direction);
 
         // Mark neighbor as visited and add to branch heads
         const neighbor_x: usize = @intCast(neighbor_coords.x);
         const neighbor_y: usize = @intCast(neighbor_coords.y);
         visiteds[neighbor_y][neighbor_x] = true;
 
-        try branch_heads.append(allocator, neighbor_coords);
+        const neighbor_branch_head = BranchHead{
+            .coords = neighbor_coords,
+            .length = current.length + 1,
+        };
+
+        // Update furthermost branch head
+        if (neighbor_branch_head.length > furthermost_branch_head.length) {
+            furthermost_branch_head = neighbor_branch_head;
+        }
+
+        try branch_heads.append(allocator, neighbor_branch_head);
     }
+
+    maze.finish = furthermost_branch_head.coords;
 }
 
 fn getBranchHeadIndex(length: usize, hardness: u8, rng: *utils.Rng) usize {
