@@ -23,6 +23,7 @@ pub fn main() !void {
     var hardness: u8 = 100;
     var seed: u64 = 0;
     var file_path: []const u8 = "maze.txt";
+    var thread_count: usize = 1;
 
     // Parse command line arguments
     var process_args = try getProcessArgs(allocator);
@@ -38,6 +39,7 @@ pub fn main() !void {
         try stdout.print("  --seed, -s <value>      Set the random seed (default: random)\n", .{});
         try stdout.print("  --level, -l, --hardness <level>  Set the hardness level (min: 0, max: 255, default: {d})\n", .{hardness});
         try stdout.print("  --output, -o <path>     Set the output file path (default: {s})\n", .{file_path});
+        try stdout.print("  --threads, -t <value>   Set the number of threads to use (default: {d})\n", .{thread_count});
         try stdout.flush();
         return;
     }
@@ -46,6 +48,7 @@ pub fn main() !void {
     height = opts.height orelse height;
     hardness = opts.hardness orelse hardness;
     file_path = opts.output orelse file_path;
+    thread_count = opts.thread_count orelse thread_count;
 
     if (opts.seed) |s| {
         seed = s;
@@ -65,7 +68,7 @@ pub fn main() !void {
 
     // Generate walls
     const start_time = std.time.milliTimestamp();
-    try generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = .growing_tree });
+    try generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = .growing_tree, .thread_count = thread_count });
     const end_time = std.time.milliTimestamp();
     const duration = end_time - start_time;
     try stdout.print("Generation complete in: {d}ms\n", .{duration});

@@ -4,6 +4,9 @@ const Coordinates = @import("coordinates.zig").Coordinates;
 const Direction = @import("direction.zig").Direction;
 
 pub const Maze = struct {
+    // Thread save mutex
+    mutex: std.Thread.Mutex,
+
     // Maze dimensions
     width: isize,
     height: isize,
@@ -28,6 +31,7 @@ pub const Maze = struct {
         }
 
         return Maze{
+            .mutex = std.Thread.Mutex{},
             .width = width,
             .height = height,
             .grid = grid,
@@ -38,21 +42,27 @@ pub const Maze = struct {
     }
 
     pub fn deinit(self: *Maze) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         for (self.grid) |row| {
             self.allocator.free(row);
         }
         self.allocator.free(self.grid);
     }
 
-    pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) !Coordinates {
+    pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
         // Check if coordinates are within bounds
         if (cell_coordinates.x < 0 or cell_coordinates.x >= self.width or
             cell_coordinates.y < 0 or cell_coordinates.y >= self.height)
         {
-            return error.IndexOutOfBounds;
+            return null;
         }
         const x: usize = @intCast(cell_coordinates.x);
         const y: usize = @intCast(cell_coordinates.y);
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
 
         // Open path in the current cell
         self.grid[y][x].openDirection(direction);
@@ -62,7 +72,7 @@ pub const Maze = struct {
         if (neighbor_coords.x < 0 or neighbor_coords.x >= self.width or
             neighbor_coords.y < 0 or neighbor_coords.y >= self.height)
         {
-            return error.IndexOutOfBounds;
+            return null;
         }
 
         const neighbor_x: usize = @intCast(neighbor_coords.x);
