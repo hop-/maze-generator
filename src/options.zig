@@ -7,6 +7,7 @@ pub const Options = struct {
     hardness: ?u8,
     help: bool,
     output: ?[]const u8,
+    thread_count: ?usize,
 
     pub fn parse(process_args: []const [:0]const u8) !Options {
         var options = Options{
@@ -16,6 +17,7 @@ pub const Options = struct {
             .hardness = null,
             .help = false,
             .output = null,
+            .thread_count = null,
         };
 
         var idx: usize = 0;
@@ -43,6 +45,10 @@ pub const Options = struct {
                 idx += 1;
                 const value = process_args[idx];
                 options.output = value;
+            } else if (std.mem.startsWith(u8, arg, "--threads") or std.mem.eql(u8, arg, "-t")) {
+                idx += 1;
+                const value = process_args[idx];
+                options.thread_count = try std.fmt.parseInt(usize, value, 10);
             }
         }
 
