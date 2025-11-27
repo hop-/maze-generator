@@ -1,8 +1,10 @@
 const std = @import("std");
 const Config = @import("types.zig").Config;
-const generateGrowingTree = @import("growing_tree.zig").generate;
 const Maze = @import("../core/maze.zig").Maze;
 const initRng = @import("../utils.zig").initRng;
+// algorithms
+const generateGrowingTree = @import("growing_tree.zig").generate;
+const generatePatchGrowingTree = @import("patch_growing_tree.zig").generate;
 
 pub fn generate(maze: *Maze, config: Config) !void {
     // Initialize allocator
@@ -23,5 +25,6 @@ pub fn generate(maze: *Maze, config: Config) !void {
 
     switch (config.algorithm) {
         .growing_tree => try generateGrowingTree(maze, &rng, config.hardness, &thread_pool),
+        .patch_growing_tree => try generatePatchGrowingTree(maze, &rng, config.hardness, &thread_pool),
     }
 }

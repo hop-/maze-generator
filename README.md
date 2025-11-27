@@ -35,18 +35,12 @@ Generate a default 20x20 maze:
 maze_generator
 ```
 
-### Command Line Options
+### Command Line
+
+Use `--help` or `-h` to see all available options
 
 ```bash
-Usage: maze_generator [option [value]]
-
-Options:
-  --help, -h                      Show help message
-  --width, -W <value>             Set the width of the maze (default: 20)
-  --height, -H <value>            Set the height of the maze (default: 20)
-  --seed, -s <value>              Set the random seed (default: random)
-  --level, -l, --hardness <level> Set the hardness level (min: 0, max: 255, default: 100)
-  --output, -o <path>             Set the output file path (default: maze.txt)
+maze_generator --help
 ```
 
 ### Examples
@@ -71,7 +65,15 @@ maze_generator --level 50 --output simple_maze.txt
 
 ## Algorithm
 
-The maze generator currently implements the **Growing Tree** algorithm, which creates mazes with interesting branching patterns and configurable complexity through the hardness parameter.
+The maze generator uses a modular architecture to support multiple maze generation algorithms.
+
+### Growing Tree Algorithm
+
+The maze generator implements the **Growing Tree** algorithm, which creates mazes with interesting branching patterns and configurable complexity through the hardness parameter.
+
+### Patch-Based Generation (Based on Growing Tree Algorithm)
+
+The maze is divided into patches, and the Growing Tree algorithm is applied to each patch independently. This approach allows for better control over maze complexity structure and parrallel generation.
 
 ### Hardness Parameter
 
@@ -96,7 +98,7 @@ maze-generator/
 │   │   ├── direction.zig     # Direction handling
 │   │   └── maze.zig          # Main maze data structure
 │   └── generator/
-│       ├── config.zig        # Generation configuration
+│       ├── types.zig         # Generation configuration
 │       ├── generator.zig     # Generator interface
 │       └── ...               # Generation algorithms
 ├── build.zig                 # Zig build configuration
@@ -119,8 +121,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Future Features
 
-- [ ] Additional generation algorithms
-- [ ] Multiple output formats (PNG, SVG, JSON)
+- Additional generation algorithms
+- Multiple output formats (PNG, SVG, JSON)
 
 ## Author
 
