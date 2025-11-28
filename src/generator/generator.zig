@@ -1,7 +1,7 @@
 const std = @import("std");
 const Config = @import("types.zig").Config;
 const Maze = @import("../core/maze.zig").Maze;
-const initRng = @import("../utils.zig").initRng;
+const Rng = @import("../utils.zig").Rng;
 // algorithms
 const generateGrowingTree = @import("growing_tree.zig").generate;
 const generatePatchGrowingTree = @import("patch_growing_tree.zig").generate;
@@ -13,7 +13,7 @@ pub fn generate(maze: *Maze, config: Config) !void {
     const allocator = gpa.allocator();
 
     // Initialize RNG
-    var rng = initRng(config.seed);
+    var rng = Rng.init(config.seed);
 
     // Initialize thread pool
     var thread_pool: std.Thread.Pool = undefined;

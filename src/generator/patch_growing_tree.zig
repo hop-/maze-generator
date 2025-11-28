@@ -19,7 +19,6 @@ const SegmentCoordinates = struct {
 };
 
 const GenerationContext = struct {
-    allocator: std.mem.Allocator,
     maze: *Maze,
     rng: *Rng,
     hardness: u8,
@@ -38,9 +37,17 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
 
     var wg = std.Thread.WaitGroup{};
 
-    for (segments.items) |segment| {
-        var ctx = GenerationContext{
-            .allocator = allocator,
+    // var threadAllocators = try std.ArrayList(std.heap.ArenaAllocator).initCapacity(allocator, segments.items.len);
+    // defer threadAllocators.deinit(allocator);
+    // for (0..segments.items.len) |_| {
+    //     threadAllocators.appendAssumeCapacity(std.heap.ArenaAllocator.init(std.heap.page_allocator));
+    // }
+
+    for (0..segments.items.len) |i| {
+        const segment = segments.items[i];
+        const ctx = try allocator.create(GenerationContext);
+
+        ctx.* = GenerationContext{
             .maze = maze,
             .rng = rng,
             .hardness = hardness,
@@ -48,20 +55,20 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
         };
 
         // Start the maze generation in the thread pool
-        thread_pool.spawnWg(&wg, generateMazeTreeForSegment, .{&ctx});
+        thread_pool.spawnWg(&wg, generateMazeTreeForSegment, .{ctx});
     }
 
     // Wait for all threads to complete
-    thread_pool.waitAndWork(&wg);
+    wg.wait();
 }
 
 fn getSegmentationCount(maze_height: isize, maze_width: isize, preferred_count: usize) struct { h: usize, w: usize } {
-    const normal_segmenting_size = 5;
+    const normal_segmenting_size = 4;
 
     // Currently support segmentation only by height
     _ = maze_width; // ignore width for now
     const w_segments: usize = 1;
-    const h_segments: usize = @max(@as(usize, @intCast(maze_height)) / normal_segmenting_size, preferred_count);
+    const h_segments: usize = @min(@divFloor(@as(usize, @intCast(maze_height)), normal_segmenting_size), preferred_count);
 
     return .{ .h = h_segments, .w = w_segments };
 }
@@ -94,21 +101,26 @@ fn getSegmentCoordinates(allocator: std.mem.Allocator, maze_height: isize, maze_
 }
 
 fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
+    // Allocator
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     // Initialize visited grid for the segment
-    const visiteds = ctx.allocator.alloc([]bool, @as(usize, @intCast(ctx.segment.end.y - ctx.segment.start.y + 1))) catch return;
+    const visiteds = allocator.alloc([]bool, @as(usize, @intCast(ctx.segment.end.y - ctx.segment.start.y + 1))) catch return;
     for (visiteds) |*row| {
-        row.* = ctx.allocator.alloc(bool, @as(usize, @intCast(ctx.segment.end.x - ctx.segment.start.x + 1))) catch return;
+        row.* = allocator.alloc(bool, @as(usize, @intCast(ctx.segment.end.x - ctx.segment.start.x + 1))) catch return;
         @memset(row.*, false);
     }
 
     // Initialize branch heads list
     var branch_heads = std.ArrayList(BranchHead).empty;
-    defer branch_heads.deinit(ctx.allocator);
+    defer branch_heads.deinit(allocator);
 
     // Define the start
     const start = Coordinates{
-        .x = ctx.rng.random().intRangeAtMost(isize, ctx.segment.start.x, ctx.segment.end.x),
-        .y = ctx.rng.random().intRangeAtMost(isize, ctx.segment.start.y, ctx.segment.end.y),
+        .x = ctx.rng.intRangeAtMost(isize, ctx.segment.start.x, ctx.segment.end.x),
+        .y = ctx.rng.intRangeAtMost(isize, ctx.segment.start.y, ctx.segment.end.y),
     };
     const start_x: usize = @intCast(start.x - ctx.segment.start.x);
     const start_y: usize = @intCast(start.y - ctx.segment.start.y);
@@ -118,7 +130,7 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
         .coords = start,
         .length = 0,
     };
-    branch_heads.append(ctx.allocator, furthermost_branch_head) catch {};
+    branch_heads.append(allocator, furthermost_branch_head) catch {};
 
     while (branch_heads.items.len > 0) {
         // Select a branch head
@@ -126,10 +138,10 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
         const current = branch_heads.items[index];
 
         // Find unvisited neighbors
-        var neighbor_directions = findUnvisitedNeighbors(ctx.allocator, ctx.maze, ctx.segment.start, current.coords, visiteds) orelse {
+        var neighbor_directions = findUnvisitedNeighbors(allocator, visiteds, ctx.segment, current.coords) orelse {
             continue;
         };
-        defer neighbor_directions.deinit(ctx.allocator);
+        defer neighbor_directions.deinit(allocator);
 
         if (neighbor_directions.items.len == 0) {
             // No unvisited neighbors, remove branch head
@@ -138,7 +150,7 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
         }
 
         // Choose a random neighbor direction
-        const dir_index = ctx.rng.random().intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
+        const dir_index = ctx.rng.intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
         const chosen_direction = neighbor_directions.items[dir_index];
         const neighbor_coords = ctx.maze.openPath(current.coords, chosen_direction) orelse continue;
 
@@ -153,36 +165,34 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
             .length = current.length + 1,
         };
 
-        branch_heads.append(ctx.allocator, neighbor_branch_head) catch {};
+        branch_heads.append(allocator, neighbor_branch_head) catch {};
     }
 }
 
 fn getBranchHeadIndex(length: usize, hardness: u8, rng: *Rng) usize {
-    const r = rng.random().intRangeAtMost(u8, min_hardness, max_hardness);
+    const r = rng.intRangeAtMost(u8, min_hardness, max_hardness);
     if (r < hardness) {
         return length - 1; // Most recently added
     } else {
-        return rng.random().intRangeAtMost(usize, 0, length - 1); // Random
+        return rng.intRangeAtMost(usize, 0, length - 1); // Random
     }
 }
 
-fn findUnvisitedNeighbors(allocator: std.mem.Allocator, maze: *Maze, segment_start: Coordinates, current_coords: Coordinates, visiteds: [][]bool) ?std.ArrayList(Direction) {
-    var neighbor_directions = std.ArrayList(Direction).empty;
+fn findUnvisitedNeighbors(allocator: std.mem.Allocator, visiteds: [][]bool, segment: SegmentCoordinates, current_coords: Coordinates) ?std.ArrayList(Direction) {
+    var neighbor_directions = std.ArrayList(Direction).initCapacity(allocator, 4) catch return null;
 
     for (ALL_DIRECTIONS) |dir| {
         const neighbor_coords = current_coords.move(dir, 1);
-        if (neighbor_coords.x < segment_start.x or neighbor_coords.x >= maze.width or
-            neighbor_coords.y < segment_start.y or neighbor_coords.y >= maze.height)
+        if (neighbor_coords.x < segment.start.x or neighbor_coords.x > segment.end.x or
+            neighbor_coords.y < segment.start.y or neighbor_coords.y > segment.end.y)
         {
             continue;
         }
 
-        const neighbor_x: usize = @intCast(neighbor_coords.x - segment_start.x);
-        const neighbor_y: usize = @intCast(neighbor_coords.y - segment_start.y);
+        const neighbor_x: usize = @intCast(neighbor_coords.x - segment.start.x);
+        const neighbor_y: usize = @intCast(neighbor_coords.y - segment.start.y);
         if (!visiteds[neighbor_y][neighbor_x]) {
-            neighbor_directions.append(allocator, dir) catch {
-                return null;
-            };
+            neighbor_directions.appendAssumeCapacity(dir);
         }
     }
 

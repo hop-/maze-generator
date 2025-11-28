@@ -1,6 +1,6 @@
 const std = @import("std");
 const getProcessArgs = @import("utils.zig").getProcessArgs;
-const initRng = @import("utils.zig").initRng;
+const Rng = @import("utils.zig").Rng;
 const Options = @import("options.zig").Options;
 const generator = @import("generator/generator.zig");
 const GenerationAlgorithm = @import("generator/types.zig").Algorithm;
@@ -62,8 +62,8 @@ pub fn main() !void {
     if (opts.seed) |s| {
         seed = s;
     } else {
-        var rng = initRng(null);
-        seed = rng.random().int(u64);
+        var rng = Rng.init(null);
+        seed = rng.int(u64);
     }
 
     if (opts.algorithm) |alg_str| {
