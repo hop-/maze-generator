@@ -44,8 +44,8 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
 
     // Define the start
     const start = Coordinates{
-        .x = rng.random().intRangeAtMost(isize, 0, maze.width - 1),
-        .y = rng.random().intRangeAtMost(isize, 0, maze.height - 1),
+        .x = rng.intRangeAtMost(isize, 0, maze.width - 1),
+        .y = rng.intRangeAtMost(isize, 0, maze.height - 1),
     };
     maze.start = start;
     const start_x: usize = @intCast(start.x);
@@ -103,7 +103,7 @@ fn generateMazeTree(ctx: *GenerationContext) void {
         }
 
         // Choose a random neighbor direction
-        const dir_index = ctx.rng.random().intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
+        const dir_index = ctx.rng.intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
         const chosen_direction = neighbor_directions.items[dir_index];
         const neighbor_coords = ctx.maze.openPath(current.coords, chosen_direction) orelse continue;
 
@@ -130,11 +130,11 @@ fn generateMazeTree(ctx: *GenerationContext) void {
 }
 
 fn getBranchHeadIndex(length: usize, hardness: u8, rng: *Rng) usize {
-    const r = rng.random().intRangeAtMost(u8, min_hardness, max_hardness);
+    const r = rng.intRangeAtMost(u8, min_hardness, max_hardness);
     if (r < hardness) {
         return length - 1; // Most recently added
     } else {
-        return rng.random().intRangeAtMost(usize, 0, length - 1); // Random
+        return rng.intRangeAtMost(usize, 0, length - 1); // Random
     }
 }
 

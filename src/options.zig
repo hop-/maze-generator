@@ -1,10 +1,12 @@
 const std = @import("std");
+const generator = @import("generator/generator.zig");
 
 pub const Options = struct {
     width: ?isize,
     height: ?isize,
     seed: ?u64,
     hardness: ?u8,
+    algorithm: ?[]const u8,
     help: bool,
     output: ?[]const u8,
     thread_count: ?usize,
@@ -15,6 +17,7 @@ pub const Options = struct {
             .height = null,
             .seed = null,
             .hardness = null,
+            .algorithm = null,
             .help = false,
             .output = null,
             .thread_count = null,
@@ -49,6 +52,10 @@ pub const Options = struct {
                 idx += 1;
                 const value = process_args[idx];
                 options.thread_count = try std.fmt.parseInt(usize, value, 10);
+            } else if (std.mem.startsWith(u8, arg, "--algorithm") or std.mem.eql(u8, arg, "-a")) {
+                idx += 1;
+                const value = process_args[idx];
+                options.algorithm = value;
             }
         }
 
