@@ -37,12 +37,6 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
 
     var wg = std.Thread.WaitGroup{};
 
-    // var threadAllocators = try std.ArrayList(std.heap.ArenaAllocator).initCapacity(allocator, segments.items.len);
-    // defer threadAllocators.deinit(allocator);
-    // for (0..segments.items.len) |_| {
-    //     threadAllocators.appendAssumeCapacity(std.heap.ArenaAllocator.init(std.heap.page_allocator));
-    // }
-
     for (0..segments.items.len) |i| {
         const segment = segments.items[i];
         const ctx = try allocator.create(GenerationContext);
@@ -60,6 +54,13 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
 
     // Wait for all threads to complete
     wg.wait();
+
+    // Carve openings between segments
+    for (0..segments.items.len - 1) |i| {
+        carveOpeningBetweenSegments(maze, rng, segments.items[i].end.y);
+    }
+
+    try setStartAndEndPoints(allocator, maze, rng);
 }
 
 fn getSegmentationCount(maze_height: isize, maze_width: isize, preferred_count: usize) struct { h: usize, w: usize } {
@@ -197,4 +198,68 @@ fn findUnvisitedNeighbors(allocator: std.mem.Allocator, visiteds: [][]bool, segm
     }
 
     return neighbor_directions;
+}
+
+fn carveOpeningBetweenSegments(maze: *Maze, rng: *Rng, seem_y: isize) void {
+    const min_openings = @as(usize, @max(@divFloor(maze.height, 10), 1));
+    const max_openings = @as(usize, @max(@as(usize, @intFromFloat(@as(f64, @floatFromInt(min_openings)) * 1.1)), min_openings + 2));
+
+    const opening_count = rng.intRangeAtMost(usize, min_openings, max_openings);
+
+    for (0..opening_count) |_| {
+        const opening_x = rng.intRangeAtMost(isize, 0, maze.width - 1);
+        const upper_cell = Coordinates{ .x = opening_x, .y = seem_y };
+
+        _ = maze.openPath(upper_cell, Direction.south);
+    }
+}
+
+fn setStartAndEndPoints(allocator: std.mem.Allocator, maze: *Maze, rng: *Rng) !void {
+    // Set start point at the top row
+    const start_x = rng.intRangeAtMost(isize, 0, maze.width - 1);
+    const start_y = rng.intRangeAtMost(isize, 0, maze.height - 1);
+    const start = Coordinates{ .x = start_x, .y = start_y };
+    maze.start = start;
+
+    // Create maze weight map for distance calculation
+    const weights = try allocator.alloc([]usize, @as(usize, @intCast(maze.height)));
+    for (weights) |*row| {
+        row.* = try allocator.alloc(usize, @as(usize, @intCast(maze.width)));
+        @memset(row.*, 0);
+    }
+
+    var furthest_point = start;
+
+    var max_distance: usize = 0;
+
+    // Perform BFS to find the furthest point from start
+    var queue = std.ArrayList(Coordinates).empty;
+    defer queue.deinit(allocator);
+    try queue.append(allocator, start);
+
+    weights[@intCast(start.y)][@intCast(start.x)] = 1;
+
+    while (queue.pop()) |coord| {
+        const weight = weights[@intCast(coord.y)][@intCast(coord.x)] + 1;
+
+        for (ALL_DIRECTIONS) |dir| {
+            if (maze.canMove(coord, dir)) {
+                const neighbor = coord.move(dir, 1);
+                const neighbor_x = @as(usize, @intCast(neighbor.x));
+                const neighbor_y = @as(usize, @intCast(neighbor.y));
+
+                if (weights[neighbor_y][neighbor_x] == 0 or weights[neighbor_y][neighbor_x] > weight) {
+                    weights[neighbor_y][neighbor_x] = weight;
+                    try queue.append(allocator, neighbor);
+
+                    if (weights[neighbor_y][neighbor_x] > max_distance) {
+                        max_distance = weights[neighbor_y][neighbor_x];
+                        furthest_point = neighbor;
+                    }
+                }
+            }
+        }
+    }
+
+    maze.finish = furthest_point;
 }

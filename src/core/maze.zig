@@ -51,6 +51,22 @@ pub const Maze = struct {
         self.allocator.free(self.grid);
     }
 
+    pub fn canMove(self: *Maze, cell_coordinates: Coordinates, direction: Direction) bool {
+        // Check if coordinates are within bounds
+        if (cell_coordinates.x < 0 or cell_coordinates.x >= self.width or
+            cell_coordinates.y < 0 or cell_coordinates.y >= self.height)
+        {
+            return false;
+        }
+        const x: usize = @intCast(cell_coordinates.x);
+        const y: usize = @intCast(cell_coordinates.y);
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.grid[y][x].hasDirection(direction);
+    }
+
     pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
         // Check if coordinates are within bounds
         if (cell_coordinates.x < 0 or cell_coordinates.x >= self.width or

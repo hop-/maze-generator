@@ -30,8 +30,8 @@ pub const Writer = struct {
                     .y = @intCast(map_y),
                 };
                 map[map_y][map_x] = 1; // Path
-                if (cell.hasDirection(Direction.north)) {
-                    const neighbor_coords = map_coordinates.move(Direction.north, 1);
+                if (cell.hasDirection(Direction.south)) {
+                    const neighbor_coords = map_coordinates.move(Direction.south, 1);
                     if (neighbor_coords.y < map_height and neighbor_coords.x < map_width) {
                         const neighbor_x: usize = @intCast(neighbor_coords.x);
                         const neighbor_y: usize = @intCast(neighbor_coords.y);
