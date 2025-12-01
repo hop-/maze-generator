@@ -33,8 +33,8 @@ pub fn generate(parent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, har
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const thread_count = thread_pool.threads.len;
-    const segments = try getSegmentCoordinates(allocator, maze.height, maze.width, thread_count);
+    // const thread_count = thread_pool.threads.len;
+    const segments = try getSegmentCoordinates(allocator, maze.height, maze.width);
 
     // Wait group to synchronize threads
     var wg = std.Thread.WaitGroup{};
@@ -68,7 +68,18 @@ pub fn generate(parent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, har
     try setStartAndEndPoints(allocator, maze, rng);
 }
 
-fn getSegmentationCount(maze_height: isize, maze_width: isize, preferred_count: usize) struct { h: usize, w: usize } {
+fn getSegmentationCount(maze_height: isize, maze_width: isize) struct { h: usize, w: usize } {
+    const normal_segmenting_size = 50;
+
+    // Currently support segmentation only by height
+    _ = maze_width; // ignore width for now
+    const w_segments: usize = 1;
+    const h_segments: usize = @max(1, @divFloor(@as(usize, @intCast(maze_height)), normal_segmenting_size));
+
+    return .{ .h = h_segments, .w = w_segments };
+}
+
+fn getSegmentationCountWithPreferred(maze_height: isize, maze_width: isize, preferred_count: usize) struct { h: usize, w: usize } {
     const normal_segmenting_size = 4;
 
     // Currently support segmentation only by height
@@ -79,8 +90,8 @@ fn getSegmentationCount(maze_height: isize, maze_width: isize, preferred_count: 
     return .{ .h = h_segments, .w = w_segments };
 }
 
-fn getSegmentCoordinates(allocator: std.mem.Allocator, maze_height: isize, maze_width: isize, preferred_count: usize) !std.ArrayList(SegmentCoordinates) {
-    const segmentation_counts = getSegmentationCount(maze_height, maze_width, preferred_count);
+fn getSegmentCoordinates(allocator: std.mem.Allocator, maze_height: isize, maze_width: isize) !std.ArrayList(SegmentCoordinates) {
+    const segmentation_counts = getSegmentationCount(maze_height, maze_width);
     const h_segments = segmentation_counts.h;
     const w_segments = segmentation_counts.w;
 
@@ -228,8 +239,8 @@ fn setStartAndEndPoints(allocator: std.mem.Allocator, maze: *Maze, rng: *Rng) !v
     maze.start = start;
 
     // Create maze weight map for distance calculation
-    const weights = try allocator.alloc([]usize, @as(usize, @intCast(maze.height)));
-    for (weights) |*row| {
+    const distances = try allocator.alloc([]usize, @as(usize, @intCast(maze.height)));
+    for (distances) |*row| {
         row.* = try allocator.alloc(usize, @as(usize, @intCast(maze.width)));
         @memset(row.*, 0);
     }
@@ -240,13 +251,19 @@ fn setStartAndEndPoints(allocator: std.mem.Allocator, maze: *Maze, rng: *Rng) !v
 
     // Perform BFS to find the furthest point from start
     var queue = std.ArrayList(Coordinates).empty;
-    defer queue.deinit(allocator);
     try queue.append(allocator, start);
 
-    weights[@intCast(start.y)][@intCast(start.x)] = 1;
+    const start_x_idx: usize = @intCast(start.x);
+    const start_y_idx: usize = @intCast(start.y);
+    distances[start_y_idx][start_x_idx] = 1;
 
-    while (queue.pop()) |coord| {
-        const weight = weights[@intCast(coord.y)][@intCast(coord.x)] + 1;
+    var queue_index: usize = 0;
+
+    while (queue_index < queue.items.len) {
+        const coord = queue.items[queue_index];
+        queue_index += 1;
+
+        const current_distance = distances[@intCast(coord.y)][@intCast(coord.x)] + 1;
 
         for (ALL_DIRECTIONS) |dir| {
             if (maze.canMoveLockFree(coord, dir)) {
@@ -254,12 +271,12 @@ fn setStartAndEndPoints(allocator: std.mem.Allocator, maze: *Maze, rng: *Rng) !v
                 const neighbor_x = @as(usize, @intCast(neighbor.x));
                 const neighbor_y = @as(usize, @intCast(neighbor.y));
 
-                if (weights[neighbor_y][neighbor_x] == 0 or weights[neighbor_y][neighbor_x] > weight) {
-                    weights[neighbor_y][neighbor_x] = weight;
+                if (distances[neighbor_y][neighbor_x] == 0 or distances[neighbor_y][neighbor_x] > current_distance) {
+                    distances[neighbor_y][neighbor_x] = current_distance;
                     try queue.append(allocator, neighbor);
 
-                    if (weights[neighbor_y][neighbor_x] > max_distance) {
-                        max_distance = weights[neighbor_y][neighbor_x];
+                    if (distances[neighbor_y][neighbor_x] > max_distance) {
+                        max_distance = distances[neighbor_y][neighbor_x];
                         furthest_point = neighbor;
                     }
                 }
