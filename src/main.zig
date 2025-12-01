@@ -6,6 +6,7 @@ const generator = @import("generator/generator.zig");
 const GenerationAlgorithm = @import("generator/types.zig").Algorithm;
 const Writer = @import("writer.zig").Writer;
 const Maze = @import("core/maze.zig").Maze;
+const printHelp = @import("utils.zig").printHelp;
 
 pub fn main() !void {
     // Init stdout
@@ -30,42 +31,45 @@ pub fn main() !void {
     // Parse command line arguments
     var process_args = try getProcessArgs(allocator);
     defer process_args.deinit(allocator);
-    const opts = try Options.parse(process_args.items);
 
+    const opts = try Options.parse(process_args.items);
     if (opts.help) {
-        try stdout.print("Usage: maze_generator [option [value]]\n", .{});
-        try stdout.print("Options:\n", .{});
-        try stdout.print("  --help, -h              Show this help message\n", .{});
-        try stdout.print("  --width, -W <value>     Set the width of the maze (default: {d})\n", .{width});
-        try stdout.print("  --height, -H <value>    Set the height of the maze (default: {d})\n", .{height});
-        try stdout.print("  --seed, -s <value>      Set the random seed (default: random)\n", .{});
-        try stdout.print("  --level, -l <level>     Set the hardness level (default: {d})\n", .{hardness});
-        try stdout.print("                          Possible values: {d}-{d}\n", .{ 0, std.math.maxInt(u8) });
-        try stdout.print("  --algorithm, -a <name>  Set the generation algorithm (default: {s})\n", .{@tagName(algorithm)});
-        try stdout.print("                          Available algorithms:", .{});
-        for (std.meta.tags(GenerationAlgorithm)) |alg| {
-            try stdout.print(" {s}", .{@tagName(alg)});
+        const algorithms = std.meta.tags(GenerationAlgorithm);
+        const algorithm_names = try allocator.alloc([]const u8, algorithms.len);
+        defer allocator.free(algorithm_names);
+
+        for (0..algorithms.len) |i| {
+            algorithm_names[i] = @tagName(algorithms[i]);
         }
-        try stdout.print("\n", .{});
-        try stdout.print("  --output, -o <path>     Set the output file path (default: {s})\n", .{file_path});
-        try stdout.print("  --threads, -t <value>   Set the number of threads to use (default: {d})\n", .{thread_count});
-        try stdout.flush();
+
+        try printHelp(
+            stdout,
+            std.fs.path.basename(process_args.items[0]),
+            .{
+                .width = width,
+                .height = height,
+                .hardness = hardness,
+                .algorithm = @tagName(algorithm),
+                .algorithms = algorithm_names,
+                .file_path = file_path,
+                .thread_count = thread_count,
+            },
+        );
         return;
     }
 
+    // Override defaults with provided options
     width = opts.width orelse width;
     height = opts.height orelse height;
     hardness = opts.hardness orelse hardness;
     file_path = opts.output orelse file_path;
     thread_count = opts.thread_count orelse thread_count;
-
     if (opts.seed) |s| {
         seed = s;
     } else {
         var rng = Rng.init(null);
         seed = rng.int(u64);
     }
-
     if (opts.algorithm) |alg_str| {
         if (std.meta.stringToEnum(GenerationAlgorithm, alg_str)) |alg| {
             algorithm = alg;
@@ -75,6 +79,7 @@ pub fn main() !void {
         }
     }
 
+    // Print configuration
     try stdout.print("Generating maze: {d}x{d}\n", .{ width, height });
     try stdout.print("Using hardness level: {d}\n", .{hardness});
     try stdout.print("Using seed: {d}\n", .{seed});
@@ -87,7 +92,7 @@ pub fn main() !void {
 
     // Generate walls
     const start_time = std.time.milliTimestamp();
-    try generator.generate(&maze, .{ .seed = seed, .hardness = hardness, .algorithm = algorithm, .thread_count = thread_count });
+    try generator.generate(allocator, &maze, .{ .seed = seed, .hardness = hardness, .algorithm = algorithm, .thread_count = thread_count });
     const end_time = std.time.milliTimestamp();
     const duration = end_time - start_time;
     try stdout.print("Generation complete in: {d}ms\n", .{duration});

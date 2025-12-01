@@ -19,33 +19,38 @@ const SegmentCoordinates = struct {
 };
 
 const GenerationContext = struct {
+    allocator: std.mem.Allocator,
     maze: *Maze,
     rng: *Rng,
     hardness: u8,
     segment: SegmentCoordinates,
+    id: usize,
 };
 
-pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
+pub fn generate(parent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
     // Allocator
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(parent_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
     const thread_count = thread_pool.threads.len;
-    var segments = try getSegmentCoordinates(allocator, maze.height, maze.width, thread_count);
-    defer segments.deinit(allocator);
+    const segments = try getSegmentCoordinates(allocator, maze.height, maze.width, thread_count);
 
+    // Wait group to synchronize threads
     var wg = std.Thread.WaitGroup{};
 
+    // Start maze generation for each segment
     for (0..segments.items.len) |i| {
         const segment = segments.items[i];
         const ctx = try allocator.create(GenerationContext);
 
         ctx.* = GenerationContext{
+            .allocator = parent_allocator,
             .maze = maze,
             .rng = rng,
             .hardness = hardness,
             .segment = segment,
+            .id = i,
         };
 
         // Start the maze generation in the thread pool
@@ -103,9 +108,12 @@ fn getSegmentCoordinates(allocator: std.mem.Allocator, maze_height: isize, maze_
 
 fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
     // Allocator
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
+    // Rng
+    var rng = std.Random.DefaultPrng.init(ctx.rng.seed + @as(u64, @intCast(ctx.id)));
 
     // Initialize visited grid for the segment
     const visiteds = allocator.alloc([]bool, @as(usize, @intCast(ctx.segment.end.y - ctx.segment.start.y + 1))) catch return;
@@ -116,12 +124,11 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
 
     // Initialize branch heads list
     var branch_heads = std.ArrayList(BranchHead).empty;
-    defer branch_heads.deinit(allocator);
 
     // Define the start
     const start = Coordinates{
-        .x = ctx.rng.intRangeAtMost(isize, ctx.segment.start.x, ctx.segment.end.x),
-        .y = ctx.rng.intRangeAtMost(isize, ctx.segment.start.y, ctx.segment.end.y),
+        .x = rng.random().intRangeAtMost(isize, ctx.segment.start.x, ctx.segment.end.x),
+        .y = rng.random().intRangeAtMost(isize, ctx.segment.start.y, ctx.segment.end.y),
     };
     const start_x: usize = @intCast(start.x - ctx.segment.start.x);
     const start_y: usize = @intCast(start.y - ctx.segment.start.y);
@@ -135,14 +142,13 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
 
     while (branch_heads.items.len > 0) {
         // Select a branch head
-        const index = getBranchHeadIndex(branch_heads.items.len, ctx.hardness, ctx.rng);
+        const index = getBranchHeadIndex(branch_heads.items.len, ctx.hardness, &rng);
         const current = branch_heads.items[index];
 
         // Find unvisited neighbors
-        var neighbor_directions = findUnvisitedNeighbors(allocator, visiteds, ctx.segment, current.coords) orelse {
+        const neighbor_directions = findUnvisitedNeighbors(allocator, visiteds, ctx.segment, current.coords) orelse {
             continue;
         };
-        defer neighbor_directions.deinit(allocator);
 
         if (neighbor_directions.items.len == 0) {
             // No unvisited neighbors, remove branch head
@@ -151,9 +157,9 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
         }
 
         // Choose a random neighbor direction
-        const dir_index = ctx.rng.intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
+        const dir_index = rng.random().intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
         const chosen_direction = neighbor_directions.items[dir_index];
-        const neighbor_coords = ctx.maze.openPath(current.coords, chosen_direction) orelse continue;
+        const neighbor_coords = ctx.maze.openPathLockFree(current.coords, chosen_direction) orelse continue;
 
         // Mark neighbor as visited and add to branch heads
         const neighbor_x: usize = @intCast(neighbor_coords.x - ctx.segment.start.x);
@@ -170,12 +176,12 @@ fn generateMazeTreeForSegment(ctx: *GenerationContext) void {
     }
 }
 
-fn getBranchHeadIndex(length: usize, hardness: u8, rng: *Rng) usize {
-    const r = rng.intRangeAtMost(u8, min_hardness, max_hardness);
+fn getBranchHeadIndex(length: usize, hardness: u8, rng: *std.Random.DefaultPrng) usize {
+    const r = rng.random().intRangeAtMost(u8, min_hardness, max_hardness);
     if (r < hardness) {
         return length - 1; // Most recently added
     } else {
-        return rng.intRangeAtMost(usize, 0, length - 1); // Random
+        return rng.random().intRangeAtMost(usize, 0, length - 1); // Random
     }
 }
 
@@ -210,7 +216,7 @@ fn carveOpeningBetweenSegments(maze: *Maze, rng: *Rng, seem_y: isize) void {
         const opening_x = rng.intRangeAtMost(isize, 0, maze.width - 1);
         const upper_cell = Coordinates{ .x = opening_x, .y = seem_y };
 
-        _ = maze.openPath(upper_cell, Direction.south);
+        _ = maze.openPathLockFree(upper_cell, Direction.south);
     }
 }
 
@@ -243,7 +249,7 @@ fn setStartAndEndPoints(allocator: std.mem.Allocator, maze: *Maze, rng: *Rng) !v
         const weight = weights[@intCast(coord.y)][@intCast(coord.x)] + 1;
 
         for (ALL_DIRECTIONS) |dir| {
-            if (maze.canMove(coord, dir)) {
+            if (maze.canMoveLockFree(coord, dir)) {
                 const neighbor = coord.move(dir, 1);
                 const neighbor_x = @as(usize, @intCast(neighbor.x));
                 const neighbor_y = @as(usize, @intCast(neighbor.y));

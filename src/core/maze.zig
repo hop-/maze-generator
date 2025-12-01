@@ -51,34 +51,36 @@ pub const Maze = struct {
         self.allocator.free(self.grid);
     }
 
-    pub fn canMove(self: *Maze, cell_coordinates: Coordinates, direction: Direction) bool {
+    pub fn isInBounds(self: *Maze, cell_coordinates: Coordinates) bool {
+        return cell_coordinates.x >= 0 and cell_coordinates.x < self.width and
+            cell_coordinates.y >= 0 and cell_coordinates.y < self.height;
+    }
+
+    pub fn canMoveLockFree(self: *Maze, cell_coordinates: Coordinates, direction: Direction) bool {
         // Check if coordinates are within bounds
-        if (cell_coordinates.x < 0 or cell_coordinates.x >= self.width or
-            cell_coordinates.y < 0 or cell_coordinates.y >= self.height)
-        {
+        if (self.isInBounds(cell_coordinates) == false) {
             return false;
         }
         const x: usize = @intCast(cell_coordinates.x);
         const y: usize = @intCast(cell_coordinates.y);
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
         return self.grid[y][x].hasDirection(direction);
     }
 
-    pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
+    pub fn canMove(self: *Maze, cell_coordinates: Coordinates, direction: Direction) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.canMoveLockFree(cell_coordinates, direction);
+    }
+
+    pub fn openPathLockFree(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
         // Check if coordinates are within bounds
-        if (cell_coordinates.x < 0 or cell_coordinates.x >= self.width or
-            cell_coordinates.y < 0 or cell_coordinates.y >= self.height)
-        {
+        if (!self.isInBounds(cell_coordinates)) {
             return null;
         }
         const x: usize = @intCast(cell_coordinates.x);
         const y: usize = @intCast(cell_coordinates.y);
-
-        self.mutex.lock();
-        defer self.mutex.unlock();
 
         // Open path in the current cell
         self.grid[y][x].openDirection(direction);
@@ -98,5 +100,12 @@ pub const Maze = struct {
         self.grid[neighbor_y][neighbor_x].openDirection(direction.opposite());
 
         return neighbor_coords;
+    }
+
+    pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.openPathLockFree(cell_coordinates, direction);
     }
 };

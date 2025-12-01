@@ -14,8 +14,6 @@ const BranchHead = struct {
 };
 
 const GenerationContext = struct {
-    branch_mutex: std.Thread.Mutex,
-    visited_mutex: std.Thread.Mutex,
     allocator: std.mem.Allocator,
     maze: *Maze,
     rng: *Rng,
@@ -25,9 +23,9 @@ const GenerationContext = struct {
     furthermost_branch_head: BranchHead,
 };
 
-pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
+pub fn generate(parrent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
     // Allocator
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(parrent_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -40,7 +38,6 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
 
     // Initialize branch heads list
     var branch_heads = std.ArrayList(BranchHead).empty;
-    defer branch_heads.deinit(allocator);
 
     // Define the start
     const start = Coordinates{
@@ -57,11 +54,11 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
         .length = 0,
     };
     try branch_heads.append(allocator, furthermost_branch_head);
+
+    // Wait group to synchronize threads
     var wg = std.Thread.WaitGroup{};
 
     var ctx = GenerationContext{
-        .branch_mutex = std.Thread.Mutex{},
-        .visited_mutex = std.Thread.Mutex{},
         .allocator = allocator,
         .maze = maze,
         .rng = rng,
@@ -75,15 +72,17 @@ pub fn generate(maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.P
     thread_pool.spawnWg(&wg, generateMazeTree, .{&ctx});
 
     // Wait for all threads to complete
-    thread_pool.waitAndWork(&wg);
+    wg.wait();
 
     // After generation, set finish point
     ctx.maze.finish = ctx.furthermost_branch_head.coords;
 }
 
 fn generateMazeTree(ctx: *GenerationContext) void {
-    ctx.branch_mutex.lock();
-    defer ctx.branch_mutex.unlock();
+    // Allocator
+    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     while (ctx.branch_heads.items.len > 0) {
         // Select a branch head
@@ -91,10 +90,9 @@ fn generateMazeTree(ctx: *GenerationContext) void {
         const current = ctx.branch_heads.items[index];
 
         // Find unvisited neighbors
-        var neighbor_directions = findUnvisitedNeighbors(ctx.allocator, &ctx.visited_mutex, ctx.maze, current.coords, ctx.visiteds) orelse {
+        const neighbor_directions = findUnvisitedNeighbors(allocator, ctx.maze, current.coords, ctx.visiteds) orelse {
             continue;
         };
-        defer neighbor_directions.deinit(ctx.allocator);
 
         if (neighbor_directions.items.len == 0) {
             // No unvisited neighbors, remove branch head
@@ -105,15 +103,13 @@ fn generateMazeTree(ctx: *GenerationContext) void {
         // Choose a random neighbor direction
         const dir_index = ctx.rng.intRangeAtMost(usize, 0, neighbor_directions.items.len - 1);
         const chosen_direction = neighbor_directions.items[dir_index];
-        const neighbor_coords = ctx.maze.openPath(current.coords, chosen_direction) orelse continue;
+        const neighbor_coords = ctx.maze.openPathLockFree(current.coords, chosen_direction) orelse continue;
 
         // Mark neighbor as visited and add to branch heads
         const neighbor_x: usize = @intCast(neighbor_coords.x);
         const neighbor_y: usize = @intCast(neighbor_coords.y);
 
-        ctx.visited_mutex.lock();
         ctx.visiteds[neighbor_y][neighbor_x] = true;
-        ctx.visited_mutex.unlock();
 
         const neighbor_branch_head = BranchHead{
             .coords = neighbor_coords,
@@ -138,11 +134,8 @@ fn getBranchHeadIndex(length: usize, hardness: u8, rng: *Rng) usize {
     }
 }
 
-fn findUnvisitedNeighbors(allocator: std.mem.Allocator, mutex: *std.Thread.Mutex, maze: *Maze, current_coords: Coordinates, visiteds: [][]bool) ?std.ArrayList(Direction) {
+fn findUnvisitedNeighbors(allocator: std.mem.Allocator, maze: *Maze, current_coords: Coordinates, visiteds: [][]bool) ?std.ArrayList(Direction) {
     var neighbor_directions = std.ArrayList(Direction).empty;
-
-    mutex.lock();
-    defer mutex.unlock();
 
     for (ALL_DIRECTIONS) |dir| {
         const neighbor_coords = current_coords.move(dir, 1);

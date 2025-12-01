@@ -6,12 +6,7 @@ const Rng = @import("../utils.zig").Rng;
 const generateGrowingTree = @import("growing_tree.zig").generate;
 const generatePatchGrowingTree = @import("patch_growing_tree.zig").generate;
 
-pub fn generate(maze: *Maze, config: Config) !void {
-    // Initialize allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
+pub fn generate(allocator: std.mem.Allocator, maze: *Maze, config: Config) !void {
     // Initialize RNG
     var rng = Rng.init(config.seed);
 
@@ -24,7 +19,7 @@ pub fn generate(maze: *Maze, config: Config) !void {
     defer thread_pool.deinit();
 
     switch (config.algorithm) {
-        .growing_tree => try generateGrowingTree(maze, &rng, config.hardness, &thread_pool),
-        .patch_growing_tree => try generatePatchGrowingTree(maze, &rng, config.hardness, &thread_pool),
+        .growing_tree => try generateGrowingTree(allocator, maze, &rng, config.hardness, &thread_pool),
+        .patch_growing_tree => try generatePatchGrowingTree(allocator, maze, &rng, config.hardness, &thread_pool),
     }
 }
