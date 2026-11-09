@@ -4,8 +4,11 @@ const Coordinates = @import("coordinates.zig").Coordinates;
 const Direction = @import("direction.zig").Direction;
 
 pub const Maze = struct {
-    // Thread save mutex
-    mutex: std.Thread.Mutex,
+    // I/O interface used by the mutex
+    io: std.Io,
+
+    // Thread safe mutex
+    mutex: std.Io.Mutex,
 
     // Maze dimensions
     width: isize,
@@ -21,7 +24,7 @@ pub const Maze = struct {
     // Allocator for memory management
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, width: isize, height: isize) !Maze {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, width: isize, height: isize) !Maze {
         const grid = try allocator.alloc([]Cell, @intCast(height));
         for (grid) |*row| {
             row.* = try allocator.alloc(Cell, @intCast(width));
@@ -31,7 +34,8 @@ pub const Maze = struct {
         }
 
         return Maze{
-            .mutex = std.Thread.Mutex{},
+            .io = io,
+            .mutex = .init,
             .width = width,
             .height = height,
             .grid = grid,
@@ -42,8 +46,8 @@ pub const Maze = struct {
     }
 
     pub fn deinit(self: *Maze) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lockUncancelable(self.io);
+        defer self.mutex.unlock(self.io);
 
         for (self.grid) |row| {
             self.allocator.free(row);
@@ -68,8 +72,8 @@ pub const Maze = struct {
     }
 
     pub fn canMove(self: *Maze, cell_coordinates: Coordinates, direction: Direction) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lockUncancelable(self.io);
+        defer self.mutex.unlock(self.io);
 
         return self.canMoveLockFree(cell_coordinates, direction);
     }
@@ -103,8 +107,8 @@ pub const Maze = struct {
     }
 
     pub fn openPath(self: *Maze, cell_coordinates: Coordinates, direction: Direction) ?Coordinates {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lockUncancelable(self.io);
+        defer self.mutex.unlock(self.io);
 
         return self.openPathLockFree(cell_coordinates, direction);
     }

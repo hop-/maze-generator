@@ -13,7 +13,7 @@ A fast and efficient maze generator written in Zig, featuring configurable gener
 
 ### Prerequisites
 
-- [Zig](https://ziglang.org/download/) (version 0.15.2 or later)
+- [Zig](https://ziglang.org/download/) (version 0.16.0 or later)
 
 ### Building from Source
 

@@ -27,17 +27,16 @@ const GenerationContext = struct {
     id: usize,
 };
 
-pub fn generate(parent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
+pub fn generate(parent_allocator: std.mem.Allocator, io: std.Io, maze: *Maze, rng: *Rng, hardness: u8) !void {
     // Allocator
     var arena = std.heap.ArenaAllocator.init(parent_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // const thread_count = thread_pool.threads.len;
     const segments = try getSegmentCoordinates(allocator, maze.height, maze.width);
 
-    // Wait group to synchronize threads
-    var wg = std.Thread.WaitGroup{};
+    // Task group to synchronize threads
+    var group: std.Io.Group = .init;
 
     // Start maze generation for each segment
     for (0..segments.items.len) |i| {
@@ -54,11 +53,11 @@ pub fn generate(parent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, har
         };
 
         // Start the maze generation in the thread pool
-        thread_pool.spawnWg(&wg, generateMazeTreeForSegment, .{ctx});
+        group.async(io, generateMazeTreeForSegment, .{ctx});
     }
 
     // Wait for all threads to complete
-    wg.wait();
+    try group.await(io);
 
     // Carve openings between segments
     for (0..segments.items.len - 1) |i| {

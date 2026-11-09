@@ -7,19 +7,20 @@ const generateGrowingTree = @import("growing_tree.zig").generate;
 const generatePatchGrowingTree = @import("patch_growing_tree.zig").generate;
 
 pub fn generate(allocator: std.mem.Allocator, maze: *Maze, config: Config) !void {
-    // Initialize RNG
-    var rng = Rng.init(config.seed);
-
-    // Initialize thread pool
-    var thread_pool: std.Thread.Pool = undefined;
-    try thread_pool.init(.{
-        .allocator = allocator,
-        .n_jobs = config.thread_count,
+    // Dedicated threaded I/O acting as the worker pool. The calling thread also
+    // runs tasks once the limit is reached, so `thread_count - 1` workers plus
+    // the caller give `thread_count` threads in total.
+    var threaded = std.Io.Threaded.init(allocator, .{
+        .async_limit = .limited(config.thread_count -| 1),
     });
-    defer thread_pool.deinit();
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    // Initialize RNG
+    var rng = Rng.init(io, config.seed);
 
     switch (config.algorithm) {
-        .growing_tree => try generateGrowingTree(allocator, maze, &rng, config.hardness, &thread_pool),
-        .patch_growing_tree => try generatePatchGrowingTree(allocator, maze, &rng, config.hardness, &thread_pool),
+        .growing_tree => try generateGrowingTree(allocator, io, maze, &rng, config.hardness),
+        .patch_growing_tree => try generatePatchGrowingTree(allocator, io, maze, &rng, config.hardness),
     }
 }

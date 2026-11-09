@@ -23,7 +23,7 @@ const GenerationContext = struct {
     furthermost_branch_head: BranchHead,
 };
 
-pub fn generate(parrent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, hardness: u8, thread_pool: *std.Thread.Pool) !void {
+pub fn generate(parrent_allocator: std.mem.Allocator, io: std.Io, maze: *Maze, rng: *Rng, hardness: u8) !void {
     // Allocator
     var arena = std.heap.ArenaAllocator.init(parrent_allocator);
     defer arena.deinit();
@@ -55,8 +55,8 @@ pub fn generate(parrent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, ha
     };
     try branch_heads.append(allocator, furthermost_branch_head);
 
-    // Wait group to synchronize threads
-    var wg = std.Thread.WaitGroup{};
+    // Task group to synchronize threads
+    var group: std.Io.Group = .init;
 
     var ctx = GenerationContext{
         .allocator = allocator,
@@ -69,10 +69,10 @@ pub fn generate(parrent_allocator: std.mem.Allocator, maze: *Maze, rng: *Rng, ha
     };
 
     // Start the maze generation in the thread pool
-    thread_pool.spawnWg(&wg, generateMazeTree, .{&ctx});
+    group.async(io, generateMazeTree, .{&ctx});
 
     // Wait for all threads to complete
-    wg.wait();
+    try group.await(io);
 
     // After generation, set finish point
     ctx.maze.finish = ctx.furthermost_branch_head.coords;

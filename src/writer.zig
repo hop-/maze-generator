@@ -75,12 +75,12 @@ pub const Writer = struct {
         }
         try writer.flush();
     }
-    pub fn writeToFile(maze: *const Maze, file_path: []const u8) !void {
-        var file = try std.fs.cwd().createFile(file_path, .{ .truncate = true });
-        defer file.close();
+    pub fn writeToFile(io: std.Io, maze: *const Maze, file_path: []const u8) !void {
+        var file = try std.Io.Dir.cwd().createFile(io, file_path, .{ .truncate = true });
+        defer file.close(io);
 
         var write_to_file_buffer: [1024]u8 = undefined;
-        var file_writer = file.writer(&write_to_file_buffer);
+        var file_writer = file.writer(io, &write_to_file_buffer);
         const writer = &file_writer.interface;
 
         return Writer.write(maze, writer);

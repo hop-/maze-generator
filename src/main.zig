@@ -1,6 +1,4 @@
 const std = @import("std");
-const getProcessArgs = @import("utils.zig").getProcessArgs;
-const Rng = @import("utils.zig").Rng;
 const Options = @import("options.zig").Options;
 const generator = @import("generator/generator.zig");
 const GenerationAlgorithm = @import("generator/types.zig").Algorithm;
@@ -8,16 +6,16 @@ const Writer = @import("writer.zig").Writer;
 const Maze = @import("core/maze.zig").Maze;
 const printHelp = @import("utils.zig").printHelp;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+
     // Init stdout
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    // Initialize a general purpose allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    // General purpose allocator (leak-checked in debug builds)
+    const allocator = init.gpa;
 
     // Default parameters
     var width: isize = 20;
@@ -29,10 +27,9 @@ pub fn main() !void {
     var thread_count: usize = 1;
 
     // Parse command line arguments
-    var process_args = try getProcessArgs(allocator);
-    defer process_args.deinit(allocator);
+    const process_args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    const opts = try Options.parse(process_args.items);
+    const opts = try Options.parse(process_args);
     if (opts.help) {
         const algorithms = std.meta.tags(GenerationAlgorithm);
         const algorithm_names = try allocator.alloc([]const u8, algorithms.len);
@@ -44,7 +41,7 @@ pub fn main() !void {
 
         try printHelp(
             stdout,
-            std.fs.path.basename(process_args.items[0]),
+            std.fs.path.basename(process_args[0]),
             .{
                 .width = width,
                 .height = height,
@@ -67,8 +64,7 @@ pub fn main() !void {
     if (opts.seed) |s| {
         seed = s;
     } else {
-        var rng = Rng.init(null);
-        seed = rng.int(u64);
+        io.random(std.mem.asBytes(&seed));
     }
     if (opts.algorithm) |alg_str| {
         if (std.meta.stringToEnum(GenerationAlgorithm, alg_str)) |alg| {
@@ -87,14 +83,13 @@ pub fn main() !void {
     try stdout.flush();
 
     // Create an empty maze
-    var maze = try Maze.init(allocator, width, height);
+    var maze = try Maze.init(allocator, io, width, height);
     defer maze.deinit();
 
     // Generate walls
-    const start_time = std.time.milliTimestamp();
+    const start_time = std.Io.Timestamp.now(io, .awake);
     try generator.generate(allocator, &maze, .{ .seed = seed, .hardness = hardness, .algorithm = algorithm, .thread_count = thread_count });
-    const end_time = std.time.milliTimestamp();
-    const duration = end_time - start_time;
+    const duration = start_time.untilNow(io, .awake).toMilliseconds();
     try stdout.print("Generation complete in: {d}ms\n", .{duration});
     try stdout.flush();
 
@@ -102,7 +97,7 @@ pub fn main() !void {
     try stdout.flush();
 
     // Write maze to file
-    try Writer.writeToFile(&maze, file_path);
+    try Writer.writeToFile(io, &maze, file_path);
 
     try stdout.print("Done\n", .{});
     try stdout.flush();
